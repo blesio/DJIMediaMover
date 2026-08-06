@@ -1,4 +1,3 @@
 .build/
-build/*
-!build/DJI-Media-Mover.zip
+build/
 .DS_Store
