@@ -21,7 +21,12 @@ actor TransferEngine {
         return result.sorted { $0.source.path < $1.source.path }
     }
 
-    func transfer(volumes: [URL], destination: URL, report: Reporter) async {
+    func transfer(
+        volumes: [URL],
+        destination: URL,
+        removeVerifiedDuplicates: Bool,
+        report: Reporter
+    ) async {
         var update = TransferUpdate(stage: .scanning)
         await report(update)
         let files = scan(volumes: volumes)
@@ -37,8 +42,9 @@ actor TransferEngine {
                     update.stage = .copying; update.currentFile = file.source.lastPathComponent; update.bytesPerSecond = 0; await report(update)
                     let target = try targetURL(for: file, root: destination)
                     let finalURL: URL
-                    if fm.fileExists(atPath: target.path), try filesEqual(file.source, target) {
-                        finalURL = target
+                    let existingDuplicate = try existingDuplicate(of: file.source, startingAt: target)
+                    if let existingDuplicate {
+                        finalURL = existingDuplicate
                     } else {
                         finalURL = try unusedURL(startingAt: target)
                         let temporary = partialURL(for: finalURL)
@@ -58,6 +64,12 @@ actor TransferEngine {
                     }
                     guard try filesEqual(file.source, finalURL) else { throw TransferError.sourceChanged(file.source.lastPathComponent) }
                     update.copied += 1; await report(update)
+
+                    if existingDuplicate != nil, !removeVerifiedDuplicates {
+                        update.duplicatesRetained += 1
+                        await report(update)
+                        continue
+                    }
 
                     // Per-file commit: once this exact source is verified at the
                     // destination, remove it immediately so restarts only scan
@@ -94,7 +106,13 @@ actor TransferEngine {
                 await report(update)
                 return
             }
-            update.stage = .complete; update.currentFile = ""; update.bytesPerSecond = 0; update.message = "Import finished and verified originals were removed."; await report(update)
+            update.stage = .complete
+            update.currentFile = ""
+            update.bytesPerSecond = 0
+            update.message = update.duplicatesRetained > 0
+                ? "Import finished. \(update.duplicatesRetained) verified duplicate(s) were retained on the source."
+                : "Import finished and verified originals were removed."
+            await report(update)
         } catch {
             update.stage = .failed; update.message = error.localizedDescription; await report(update)
         }
@@ -150,6 +168,29 @@ actor TransferEngine {
             if !fm.fileExists(atPath: candidate.path) { return candidate }
         }
         throw CocoaError(.fileWriteFileExists)
+    }
+
+    private func existingDuplicate(of source: URL, startingAt target: URL) throws -> URL? {
+        let folder = target.deletingLastPathComponent()
+        let base = target.deletingPathExtension().lastPathComponent
+        let ext = target.pathExtension.lowercased()
+        let candidates = try fm.contentsOfDirectory(
+            at: folder,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ).filter { candidate in
+            guard (try? candidate.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { return false }
+            guard candidate.pathExtension.lowercased() == ext else { return false }
+            let candidateBase = candidate.deletingPathExtension().lastPathComponent
+            guard candidateBase == base || candidateBase.hasPrefix("\(base)-") else { return false }
+            let suffix = candidateBase.dropFirst(base.count + 1)
+            return candidateBase == base || (!suffix.isEmpty && suffix.allSatisfy(\.isNumber))
+        }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+
+        for candidate in candidates where try filesEqual(source, candidate) {
+            return candidate
+        }
+        return nil
     }
 
     private func partialURL(for finalURL: URL) -> URL {
@@ -210,7 +251,10 @@ actor TransferEngine {
     }
 
     private func ensureWritable(_ url: URL) throws {
-        try fm.createDirectory(at: url, withIntermediateDirectories: true)
+        var isDirectory: ObjCBool = false
+        guard fm.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw TransferError.destinationUnavailable
+        }
         let probe = url.appendingPathComponent(".dji-media-mover-write-test-\(UUID().uuidString)")
         guard fm.createFile(atPath: probe.path, contents: Data()) else { throw TransferError.destinationUnavailable }
         try fm.removeItem(at: probe)

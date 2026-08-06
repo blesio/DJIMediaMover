@@ -19,6 +19,9 @@ struct ContentView: View {
                 GridRow { Text("Found"); Text("\(model.update.found)").monospacedDigit() }
                 GridRow { Text("Copied / verified"); Text("\(model.update.copied)").monospacedDigit() }
                 GridRow { Text("Deleted"); Text("\(model.update.deleted)").monospacedDigit() }
+                if model.update.duplicatesRetained > 0 {
+                    GridRow { Text("Duplicates retained"); Text("\(model.update.duplicatesRetained)").monospacedDigit() }
+                }
                 if model.update.bytesPerSecond > 0 {
                     GridRow { Text("Average speed"); Text(transferSpeed).monospacedDigit() }
                 }

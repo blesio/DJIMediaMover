@@ -24,6 +24,7 @@ struct TransferUpdate: Sendable {
     var found = 0
     var copied = 0
     var deleted = 0
+    var duplicatesRetained = 0
     var currentFile = ""
     var message = ""
     var copyErrors: [String] = []
@@ -37,7 +38,7 @@ enum TransferError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .destinationUnavailable: "Choose a writable destination before importing."
+        case .destinationUnavailable: "The selected destination no longer exists or is not writable. Choose it again in Settings."
         case .verificationFailed(let name): "Verification failed for \(name). This source file was not deleted."
         case .sourceChanged(let name): "The source changed while copying \(name). This source file was not deleted."
         }

@@ -24,6 +24,13 @@ struct SettingsView: View {
                     get: { model.automaticImport },
                     set: { value in model.setAutomatic(value) }
                 ))
+                Toggle("Remove source files already present at the destination", isOn: Binding(
+                    get: { model.removeVerifiedDuplicates },
+                    set: { value in model.setRemoveVerifiedDuplicates(value) }
+                ))
+                Text("A source is removed as a duplicate only after an existing destination file matches its size and SHA-256 hash.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Toggle("Automatically unmount after a successful import", isOn: Binding(
                     get: { model.autoUnmount },
                     set: { value in model.setAutoUnmount(value) }
@@ -35,6 +42,6 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 560, height: 380)
+        .frame(width: 560, height: 440)
     }
 }

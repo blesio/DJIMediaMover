@@ -10,6 +10,7 @@ final class AppModel: ObservableObject {
     @Published var isUnmounting = false
     @Published var automaticImport = true
     @Published var autoUnmount = false
+    @Published var removeVerifiedDuplicates = false
     let monitor = VolumeMonitor()
     private let engine = TransferEngine()
     private var handledConnection = Set<String>()
@@ -24,6 +25,7 @@ final class AppModel: ObservableObject {
         restoreDestinationAccess()
         automaticImport = UserDefaults.standard.object(forKey: "automaticImport") as? Bool ?? true
         autoUnmount = UserDefaults.standard.object(forKey: "autoUnmount") as? Bool ?? false
+        removeVerifiedDuplicates = UserDefaults.standard.object(forKey: "removeVerifiedDuplicates") as? Bool ?? false
         monitor.onChange = { [weak self] volumes in self?.volumesChanged(volumes) }
     }
 
@@ -52,6 +54,11 @@ final class AppModel: ObservableObject {
 
     func setAutoUnmount(_ value: Bool) { autoUnmount = value; UserDefaults.standard.set(value, forKey: "autoUnmount") }
 
+    func setRemoveVerifiedDuplicates(_ value: Bool) {
+        removeVerifiedDuplicates = value
+        UserDefaults.standard.set(value, forKey: "removeVerifiedDuplicates")
+    }
+
     func windowClosed() {
         NSApp.setActivationPolicy(.accessory)
     }
@@ -59,7 +66,7 @@ final class AppModel: ObservableObject {
     func showSettings() {
         if settingsWindow == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 560, height: 380),
+                contentRect: NSRect(x: 0, y: 0, width: 560, height: 440),
                 styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
@@ -153,7 +160,11 @@ final class AppModel: ObservableObject {
         isWorking = true
         NSApp.activate(ignoringOtherApps: true)
         Task {
-            await engine.transfer(volumes: volumes, destination: destination) { [weak self] value in
+            await engine.transfer(
+                volumes: volumes,
+                destination: destination,
+                removeVerifiedDuplicates: removeVerifiedDuplicates
+            ) { [weak self] value in
                 await MainActor.run { self?.update = value }
             }
             isWorking = false
