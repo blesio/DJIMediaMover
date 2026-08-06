@@ -34,7 +34,7 @@ actor TransferEngine {
             try ensureWritable(destination)
             for file in files {
                 do {
-                    update.stage = .copying; update.currentFile = file.source.lastPathComponent; await report(update)
+                    update.stage = .copying; update.currentFile = file.source.lastPathComponent; update.bytesPerSecond = 0; await report(update)
                     let target = try targetURL(for: file, root: destination)
                     let finalURL: URL
                     if fm.fileExists(atPath: target.path), try filesEqual(file.source, target) {
@@ -42,18 +42,15 @@ actor TransferEngine {
                     } else {
                         finalURL = try unusedURL(startingAt: target)
                         let temporary = partialURL(for: finalURL)
-                        var lastTick = Date()
-                        var smoothedRate = 0.0
+                        let copyStartedAt = Date()
+                        var copiedBytes = 0
                         try await resumableCopy(from: file.source, to: temporary) { byteCount in
-                            let now = Date()
-                            let elapsed = max(now.timeIntervalSince(lastTick), 0.001)
-                            let instantaneous = Double(byteCount) / elapsed
-                            smoothedRate = smoothedRate == 0 ? instantaneous : (smoothedRate * 0.7 + instantaneous * 0.3)
-                            lastTick = now
-                            update.bytesPerSecond = smoothedRate
+                            copiedBytes += byteCount
+                            let elapsed = max(Date().timeIntervalSince(copyStartedAt), 0.001)
+                            update.bytesPerSecond = Double(copiedBytes) / elapsed
                             await report(update)
                         }
-                        update.stage = .verifying; await report(update)
+                        update.stage = .verifying; update.bytesPerSecond = 0; await report(update)
                         guard try filesEqual(file.source, temporary) else {
                             throw TransferError.verificationFailed(file.source.lastPathComponent)
                         }
@@ -72,6 +69,7 @@ actor TransferEngine {
                         try fm.removeItem(at: companion)
                     }
                 } catch {
+                    update.bytesPerSecond = 0
                     update.copyErrors.append("\(file.source.lastPathComponent): \(error.localizedDescription)")
                     await report(update)
                 }

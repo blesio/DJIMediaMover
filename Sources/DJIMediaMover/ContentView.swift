@@ -20,7 +20,7 @@ struct ContentView: View {
                 GridRow { Text("Copied / verified"); Text("\(model.update.copied)").monospacedDigit() }
                 GridRow { Text("Deleted"); Text("\(model.update.deleted)").monospacedDigit() }
                 if model.update.bytesPerSecond > 0 {
-                    GridRow { Text("Transfer speed"); Text(transferSpeed).monospacedDigit() }
+                    GridRow { Text("Average speed"); Text(transferSpeed).monospacedDigit() }
                 }
             }
             if model.update.found > 0 {
